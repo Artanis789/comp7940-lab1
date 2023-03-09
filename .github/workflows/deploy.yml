@@ -15,4 +15,4 @@ jobs:
           HEROKU_API_KEY: ${{secrets.HEROKU_API_KEY}}
           HEROKU_APP_NAME: "comp7940artanis"
         run: git push -f
-https://heroku:$5bde8810-326f-4d0d-8411-ad2807085256@git.heroku.com/comp7940artanis.git main        
+https://heroku:$HEROKU_API_KEY@git.heroku.com/$HEROKU_APP_NAME.git main        
