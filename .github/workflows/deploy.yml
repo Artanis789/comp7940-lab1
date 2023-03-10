@@ -13,5 +13,5 @@ jobs:
       - name: Deploy
         env:
           HEROKU_API_KEY: ${{secrets.HEROKU_API_KEY}}
-          HEROKU_APP_NAME: "comp7940artanis"
-        run: git push -f http://heroku:$HEROKU_API_KEY@git.heroku.com/$HEROKU_APP_NAME.git main
+          HEROKU_APP_NAME: "comp7940chatbo"  # Rename this to the app of your Heroku app.
+        run: git push -f https://heroku:$HEROKU_API_KEY@git.heroku.com/$HEROKU_APP_NAME.git main  
