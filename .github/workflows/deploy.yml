@@ -15,3 +15,23 @@ jobs:
           HEROKU_API_KEY: ${{secrets.HEROKU_API_KEY}}
           HEROKU_APP_NAME: "comp7940artanis"
         run: git push -f https://heroku:$HEROKU_API_KEY@git.heroku.com/$HEROKU_APP_NAME.git main
+
+name: Python safety check
+
+on: 
+  push: 
+    branches:
+      - master
+
+env:
+  DEP_PATH: requirements.txt
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps: 
+      - name: Check out master
+        uses: actions/checkout@master
+      
+      - name: Security vulnerabilities scan
+        uses: aufdenpunkt/python-safety-check@master 
