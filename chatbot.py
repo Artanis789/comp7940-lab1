@@ -4,8 +4,7 @@ from telegram import Update
 import openai
 import os
 import logging
-import redis
-global redis1
+
 
 
 def main():
@@ -16,11 +15,7 @@ def main():
     logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                         level=logging.INFO)
     logging.info(f"API-KEY = {os.environ['GPT_API']}")
-    global redis1
-    redis1 = redis.Redis(host=os.environ['REDIS_HOST'],
-                         password=os.environ['REDIS_PASSWORD'],
-                         port=os.environ['REDIS_PORT'])
-
+    
     # register a dispatcher to handle message: here we register an echo dispatcher
     echo_handler = MessageHandler(Filters.text & (~Filters.command), echo)
 
