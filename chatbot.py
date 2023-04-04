@@ -93,11 +93,13 @@ def gpt_reply(update: Update, context: CallbackContext):
 if __name__ == '__main__':
     main()
 
-# import os
-# def main():
-#     updater = Updater(token=(os.environ['ACCESS_TOKEN']),use_context=True)
-#     dispatcher = updater.dispatcher
+import os
+def main():
+    updater = Updater(token=(os.environ['ACCESS_TOKEN']),use_context=True)
+    dispatcher = updater.dispatcher
 
-#     global redisl
-#     redisl = redis.Redis(host=(os.environ['HOST']),password=(os.environ['PASSWORD']),port=(os.environ['REDISPORT']))
+    global redisl
+    redisl = redis.Redis(host=(os.environ['HOST']),password=(os.environ['PASSWORD']),port=(os.environ['REDISPORT']))
+
+    openai.api_key(host=(os.environ['API']))
     
