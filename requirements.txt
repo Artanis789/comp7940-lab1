@@ -4,3 +4,4 @@ configparser
 redis
 openai
 mysql-connector-python
+wrapt-timeout-decorator
