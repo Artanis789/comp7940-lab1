@@ -7,6 +7,7 @@ import os
 import logging
 from wrapt_timeout_decorator import *
 import time
+import redis
 
 db_config = {
     'host': os.environ['DB_HOST'],
@@ -15,15 +16,18 @@ db_config = {
     'database': os.environ['DATABASE'],
 }
 
+redis1 = redis.Redis(host=os.environ['REDIS_HOST'],
+                     password=os.environ['REDIS_PASSWORD'],
+                     port=os.environ['REDIS_PORT'])
+
 
 def main():
-    openai.api_key = os.environ['GPT_API']
     updater = Updater(token=(os.environ['ACCESS_TOKEN']), use_context=True)
     dispatcher = updater.dispatcher
 
     logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                         level=logging.INFO)
-    logging.info(f"API-KEY = {os.environ['GPT_API']}")
+    logging.info(f"OPENAI_API_KEY={openai.api_key}")
 
     # register a dispatcher to handle message: here we register an echo dispatcher
     gpt_handler = MessageHandler(Filters.text & (~Filters.command), gpt_reply)
@@ -37,12 +41,13 @@ def main():
     dispatcher.add_handler(CommandHandler("menu_del", cook_del))
     dispatcher.add_handler(CommandHandler("menu_update", cook_update))
     dispatcher.add_handler(CommandHandler("image", image_reply))
+    dispatcher.add_handler(CommandHandler("image_log", image_list))
 
     # To start the bot:
     updater.start_polling()
     updater.idle()
 
-@timeout(10)
+
 def help_command(update: Update, context: CallbackContext) -> None:
     """Send a message when the command /help is issued."""
 
@@ -57,11 +62,12 @@ def help_command(update: Update, context: CallbackContext) -> None:
         "/menu_update: Enter the name and a new url to update a dish.\n" +\
         "Example: /menu_update 鱼香肉丝 https://www.new-cook-video/example\n\n" +\
         "/image: Enter a prompt, I can generate a realistic image for you\n" +\
-        "Example: /image a lovely cat"
+        "Example: /image a lovely cat\n\n" +\
+        "/image_log: list the history of generated images"
 
     update.message.reply_text(help_message)
 
-@timeout(10)
+
 def cook(update: Update, context: CallbackContext) -> None:
     cook_name = context.args[0]
     db = mysql.connector.connect(**db_config)
@@ -78,7 +84,7 @@ def cook(update: Update, context: CallbackContext) -> None:
         update.message.reply_text(
             f"I'm sorry, I don't know how to cook {cook_name}...")
 
-@timeout(10)
+
 def cook_list(update: Update, context: CallbackContext) -> None:
     db = mysql.connector.connect(**db_config)
     cursor = db.cursor()
@@ -93,10 +99,11 @@ def cook_list(update: Update, context: CallbackContext) -> None:
 
     update.message.reply_text(result)
 
-@timeout(10)
+
 def cook_add(update: Update, context: CallbackContext):
     if len(context.args) < 2:
-        update.message.reply_text("To add new item, please enter name and url of the video.")
+        update.message.reply_text(
+            "To add new item, please enter name and url of the video.")
     else:
         name = context.args[0]
         url = context.args[1]
@@ -113,12 +120,14 @@ def cook_add(update: Update, context: CallbackContext):
             update.message.reply_text("Successfully add a new item to menu!")
         except Exception as e:
             logging.debug(e)
-            update.message.reply_text('Failed to add new item to menu, please try again')
+            update.message.reply_text(
+                'Failed to add new item to menu, please try again')
 
-@timeout(10)
+
 def cook_del(update: Update, context: CallbackContext):
     if len(context.args) < 1:
-        update.message.reply_text("To delete an item, please enter the name of it.")
+        update.message.reply_text(
+            "To delete an item, please enter the name of it.")
     else:
         name = context.args[0]
         sql = f'DELETE FROM cooking_list WHERE name="{name}";'
@@ -134,12 +143,14 @@ def cook_del(update: Update, context: CallbackContext):
             update.message.reply_text("Successfully delete an item from menu!")
         except Exception as e:
             logging.debug(e)
-            update.message.reply_text('Failed to delete an item, please try again!')
+            update.message.reply_text(
+                'Failed to delete an item, please try again!')
 
-@timeout(10)
+
 def cook_update(update: Update, context: CallbackContext):
     if len(context.args) < 2:
-        update.message.reply_text("To update an item, please enter the name of the item and a new url.")
+        update.message.reply_text(
+            "To update an item, please enter the name of the item and a new url.")
     else:
         name = context.args[0]
         url = context.args[1]
@@ -156,7 +167,9 @@ def cook_update(update: Update, context: CallbackContext):
             update.message.reply_text("Successfully update an item from menu!")
         except Exception as e:
             logging.debug(e)
-            update.message.reply_text('Failed to update an item, please try again!')
+            update.message.reply_text(
+                'Failed to update an item, please try again!')
+
 
 @timeout(60)
 def chat(msg):
@@ -167,6 +180,7 @@ def chat(msg):
         ]
     )
     return response
+
 
 def gpt_reply(update: Update, context: CallbackContext):
     try:
@@ -182,7 +196,9 @@ def gpt_reply(update: Update, context: CallbackContext):
 
     except Exception as e:
         logging.info(str(e))
-        update.message.reply_text(f"Something wrong with chatbot, please retry!")
+        update.message.reply_text(
+            f"Something wrong with chatbot, please retry!")
+
 
 @timeout(60)
 def image(prompt):
@@ -194,6 +210,11 @@ def image(prompt):
     image_url = response['data'][0]['url']
     return image_url
 
+
+def save_image(name: str, url: str):
+    redis1.set(name, url)
+
+
 def image_reply(update: Update, context: CallbackContext):
     try:
         prompt = " ".join(context.args)
@@ -201,11 +222,24 @@ def image_reply(update: Update, context: CallbackContext):
         start = time.time()
         image_url = image(prompt)
         logging.info(f"Request cost {time.time() - start}seconds")
-        update.message.reply_text(f'Here is the url of generated image:\n{image_url}')
+        save_image(prompt, image_url)
+        update.message.reply_text(
+            f'Here is the url of generated image:\n{image_url}')
 
     except Exception as e:
         logging.info(str(e))
-        update.message.reply_text(f"Something wrong with chatbot, please retry!")
+        update.message.reply_text(
+            f"Something wrong with chatbot, please retry!")
+
+
+def image_list(update: Update, context: CallbackContext):
+    imgs = redis1.keys()
+    result = 'Here are the image records:\n'
+    for i, name in enumerate(imgs, start=1):
+        result += f'{name.decode("utf-8")}\n'
+
+    update.message.reply_text(result)
+
 
 if __name__ == "__main__":
     main()

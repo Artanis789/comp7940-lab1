@@ -1,0 +1,15 @@
+version: '3.0'
+services:
+  chatbot:
+    image: comp7940group.azurecr.io/7940project:v4.5
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PASSWORD=comp7940project
+      - REDIS_PORT=6379
+      - OPENAI_API_KEY=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
+    entrypoint: python chatbot.py
+    depends_on:
+      - redis
+  redis:
+    image: comp7940group.azurecr.io/redis:v1
+    command: redis-server /usr/local/etc/redis/redis.conf
