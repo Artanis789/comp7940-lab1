@@ -8,6 +8,8 @@ import logging
 from wrapt_timeout_decorator import *
 import time
 import redis
+import json
+import requests
 
 db_config = {
     'host': os.environ['DB_HOST'],
@@ -21,6 +23,24 @@ redis1 = redis.Redis(host=os.environ['REDIS_HOST'],
                      port=os.environ['REDIS_PORT'])
 
 
+def init_database():
+    logging.info("init database")
+    db = mysql.connector.connect(**db_config)
+    cursor = db.cursor()
+
+    sql = "DROP TABLE IF EXISTS images;"
+    logging.info(sql)
+    cursor.execute(sql)
+
+    sql = "CREATE TABLE images (id serial PRIMARY KEY, prompt VARCHAR(255), image VARCHAR(255));"
+    logging.info(sql)
+    cursor.execute(sql)
+
+    db.commit()
+    cursor.close()
+    db.close()
+
+
 def main():
     updater = Updater(token=(os.environ['ACCESS_TOKEN']), use_context=True)
     dispatcher = updater.dispatcher
@@ -28,6 +48,7 @@ def main():
     logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                         level=logging.INFO)
     logging.info(f"OPENAI_API_KEY={openai.api_key}")
+    init_database()
 
     # register a dispatcher to handle message: here we register an echo dispatcher
     gpt_handler = MessageHandler(Filters.text & (~Filters.command), gpt_reply)
@@ -35,14 +56,12 @@ def main():
     dispatcher.add_handler(gpt_handler)
     # on different commands - answer in Telegram
     dispatcher.add_handler(CommandHandler("help", help_command))
-    dispatcher.add_handler(CommandHandler("cook", cook))
-    dispatcher.add_handler(CommandHandler("menu", cook_list))
-    dispatcher.add_handler(CommandHandler("menu_add", cook_add))
-    dispatcher.add_handler(CommandHandler("menu_del", cook_del))
-    dispatcher.add_handler(CommandHandler("menu_update", cook_update))
+    dispatcher.add_handler(CommandHandler("start", start))
+    dispatcher.add_handler(CommandHandler("end", end))
     dispatcher.add_handler(CommandHandler("image", image_reply))
     dispatcher.add_handler(CommandHandler("image_log", image_list))
-    dispatcher.add_handler(CommandHandler("image_clear", image_clear))
+    dispatcher.add_handler(CommandHandler("image_review", image_review))
+    dispatcher.add_handler(CommandHandler("image_del", image_del))
 
     # To start the bot:
     updater.start_polling()
@@ -54,150 +73,77 @@ def help_command(update: Update, context: CallbackContext) -> None:
 
     help_message = "Hello, I'm a smart chatbot powered by ChatGPT.\n" +\
         "I have prepared some interesting commands for you:\n\n" +\
-        "/cook: Enter the name of the dish you are interested in, I'll give you a video.\n\n" +\
-        "/menu: list the menu.\n\n" +\
-        "/menu_add: Enter the name and the video site of the dish to add new item to the menu.\n" +\
-        "Example: /menu_add 鱼香肉丝 https://www.cook-video/example\n\n" +\
-        "/menu_del: Enter the name of the dish to delete it from the menu.\n" +\
-        "Example: /menu_del 鱼香肉丝\n\n" +\
-        "/menu_update: Enter the name and a new url to update a dish.\n" +\
-        "Example: /menu_update 鱼香肉丝 https://www.new-cook-video/example\n\n" +\
-        "/image: Enter a prompt, I can generate a realistic image for you\n" +\
+        "/start: Start a new conversation with a context\n\n" +\
+        "/end: Finish current conversation\n\n" +\
+        "/image: Enter a prompt, I can generate a realistic image for you, the image will be saved in the database\n" +\
         "Example: /image a lovely cat\n\n" +\
-        "/image_log: list the history of generated images.\n\n" +\
-        "/image_clear: clear all records!"
+        "/image_log: List the history of generated images.\n\n" +\
+        "/image_review: Enter an id of a image record, you can check the generated image again\n" +\
+        "Example: /image_review 4\n\n" +\
+        "image_del: Delete an image record from database"
 
+    logging.info("help command")
     update.message.reply_text(help_message)
 
 
-def cook(update: Update, context: CallbackContext) -> None:
-    cook_name = context.args[0]
-    db = mysql.connector.connect(**db_config)
-    cursor = db.cursor()
-    cursor.execute(f'SELECT * FROM cooking_list WHERE name="{cook_name}";')
-    logging.info(f'SELECT * FROM cooking_list WHERE name="{cook_name}";')
-    row = cursor.fetchone()
-    cursor.close()
-    db.close()
-    if row is not None:
-        update.message.reply_text(
-            f"You can go to {row[-1]} to learn how to cook {cook_name}.")
-    else:
-        update.message.reply_text(
-            f"I'm sorry, I don't know how to cook {cook_name}...")
+def start(update: Update, context: CallbackContext) -> None:
+    logging.info("start command")
+
+    context_json = json.dumps(
+        [{"role": "system", "content": "You are a helpful chatbot"}])
+    redis1.set("context", context_json)
+    update.message.reply_text("Hello, what can I do for you?")
 
 
-def cook_list(update: Update, context: CallbackContext) -> None:
-    db = mysql.connector.connect(**db_config)
-    cursor = db.cursor()
-    cursor.execute('SELECT * FROM cooking_list;')
-    rows = cursor.fetchall()
-    cursor.close()
-    db.close()
-
-    result = 'Here is the menu:\n'
-    for i, row in enumerate(rows, start=1):
-        result += f'{i}. {row[1]}\n'
-
-    update.message.reply_text(result)
+def end(update: Update, context: CallbackContext) -> None:
+    logging.info("end command")
+    redis1.delete("context")
+    update.message.reply_text("Good bye~~")
 
 
-def cook_add(update: Update, context: CallbackContext):
-    if len(context.args) < 2:
-        update.message.reply_text(
-            "To add new item, please enter name and url of the video.")
-    else:
-        name = context.args[0]
-        url = context.args[1]
-        sql = f'INSERT INTO cooking_list (name, url) VALUES ("{name}", "{url}");'
-        logging.info(f'\n{sql}')
-
-        db = mysql.connector.connect(**db_config)
-        cursor = db.cursor()
-        try:
-            cursor.execute(sql)
-            db.commit()
-            cursor.close()
-            db.close()
-            update.message.reply_text("Successfully add a new item to menu!")
-        except Exception as e:
-            logging.debug(e)
-            update.message.reply_text(
-                'Failed to add new item to menu, please try again')
-
-
-def cook_del(update: Update, context: CallbackContext):
-    if len(context.args) < 1:
-        update.message.reply_text(
-            "To delete an item, please enter the name of it.")
-    else:
-        name = context.args[0]
-        sql = f'DELETE FROM cooking_list WHERE name="{name}";'
-        logging.info(f'\n{sql}')
-
-        db = mysql.connector.connect(**db_config)
-        cursor = db.cursor()
-        try:
-            cursor.execute(sql)
-            db.commit()
-            cursor.close()
-            db.close()
-            update.message.reply_text("Successfully delete an item from menu!")
-        except Exception as e:
-            logging.debug(e)
-            update.message.reply_text(
-                'Failed to delete an item, please try again!')
-
-
-def cook_update(update: Update, context: CallbackContext):
-    if len(context.args) < 2:
-        update.message.reply_text(
-            "To update an item, please enter the name of the item and a new url.")
-    else:
-        name = context.args[0]
-        url = context.args[1]
-        sql = f'UPDATE cooking_list SET url = "{url}" WHERE name = "{name}";'
-        logging.info(f'\n{sql}')
-
-        db = mysql.connector.connect(**db_config)
-        cursor = db.cursor()
-        try:
-            cursor.execute(sql)
-            db.commit()
-            cursor.close()
-            db.close()
-            update.message.reply_text("Successfully update an item from menu!")
-        except Exception as e:
-            logging.debug(e)
-            update.message.reply_text(
-                'Failed to update an item, please try again!')
-
-
-@timeout(60)
+@timeout(90)
 def chat(msg):
-    response = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
-        messages=[
-            {"role": "user", "content": msg},
-        ]
-    )
-    return response
+    data = redis1.get('context')
+    if data:
+        context = json.loads(data)
+        assert isinstance(context, list)
+
+        context.append({"role": "user", "content": msg})
+        logging.info(f'Using context, context:\n{context}')
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=context
+        )
+        context.append({"role": "assistant",
+                        "content": response.choices[0].message.content})
+
+        logging.info(f'context after response:\n{context}')
+        redis1.set('context', json.dumps(context))
+
+        result = response.choices[0].message.content
+        result += '\n\n\nYou are chat me with a context, please remember to use /end command to stop the conversation.'
+    else:
+        logging.info(f'Not using context, message:\n{msg}')
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "user", "content": msg},
+            ]
+        )
+        result = response.choices[0].message.content
+    return result
 
 
 def gpt_reply(update: Update, context: CallbackContext):
     try:
         msg = update.message.text
-        logging.info(msg)
         start = time.time()
-        response = chat(msg)
+        result = chat(msg)
         logging.info(f"Request cost {time.time() - start}seconds")
-        result = ""
-        for choice in response.choices:
-            result += choice.message.content
         update.message.reply_text(result)
 
     except Exception as e:
-        logging.info(str(e))
+        logging.info(e)
         update.message.reply_text(
             f"Something wrong with chatbot, please retry!")
 
@@ -213,20 +159,43 @@ def image(prompt):
     return image_url
 
 
-def save_image(name: str, url: str):
-    redis1.set(name, url)
+def download_img(url):
+    rsp = requests.get(url)
+    img = rsp.content
+    rsp.close()
+    return img
+
+
+def save_image(prompt: str, img: bytes):
+    prompt = prompt.replace(' ', '_')
+    file_name = f"{prompt}.jpg"
+    with open(f'/images/{file_name}', 'wb') as f:
+        f.write(img)
+
+    sql = f'INSERT INTO images (prompt, image) VALUES ("{prompt}", "{file_name}");'
+    logging.info(sql)
+    db = mysql.connector.connect(**db_config)
+    cursor = db.cursor()
+    cursor.execute(sql)
+    db.commit()
+    cursor.close()
+    db.close()
 
 
 def image_reply(update: Update, context: CallbackContext):
+    if not context.args:
+        update.message.reply_text("Please enter a prompt")
+        return
     try:
         prompt = " ".join(context.args)
         logging.info(prompt)
         start = time.time()
         image_url = image(prompt)
         logging.info(f"Request cost {time.time() - start}seconds")
-        save_image(prompt, image_url)
-        update.message.reply_text(
-            f'Here is the url of generated image:\n{image_url}')
+        img = download_img(image_url)
+        save_image(prompt, img)
+        update.message.reply_photo(
+            img, caption="Here is the picture generating for you. I already save it in database, you can type /image_log to ckeck the history.\n")
 
     except Exception as e:
         logging.info(str(e))
@@ -235,18 +204,87 @@ def image_reply(update: Update, context: CallbackContext):
 
 
 def image_list(update: Update, context: CallbackContext):
-    imgs = redis1.keys()
-    result = 'Here are the image records:\n'
-    for i, name in enumerate(imgs, start=1):
-        result += f'{name.decode("utf-8")}\n'
-        result += f'{redis1.get(name).decode("utf-8")}\n\n\n'
+    sql = f'select * from images;'
+    logging.info(sql)
 
+    db = mysql.connector.connect(**db_config)
+    cursor = db.cursor()
+    cursor.execute(sql)
+    imgs = cursor.fetchall()
+    cursor.close()
+    db.close()
+
+    result = 'Here are the image records:\n'
+    for i, img in enumerate(imgs, start=1):
+        result += f'{i}. {img[1]}\n'
+    result += "\n\nYou can use /image_review command to check an image record."
     update.message.reply_text(result)
 
 
-def image_clear(update: Update, context: CallbackContext):
-    redis1.flushdb()
-    update.message.reply_text("Successfully clear all records!")
+def image_review(update: Update, context: CallbackContext):
+    if len(context.args) < 1:
+        update.message.reply_text("Please Enter the id of an image record!")
+        return
+    id = context.args[0]
+    if not id.isdigit():
+        update.message.reply_text(
+            "To review an image, please enter the id of it, use /image_log command to check the id.")
+        return
+    id = int(id)
+    sql = f'SELECT * FROM images WHERE id={id};'
+    logging.info(sql)
+    try:
+        db = mysql.connector.connect(**db_config)
+        cursor = db.cursor()
+        cursor.execute(sql)
+
+        row = cursor.fetchone()
+        cursor.close()
+        db.close()
+    except Exception as e:
+        logging.info(e)
+        update.message.reply_text(
+            "Something wrong with the database.")
+
+    if row is not None:
+        file_name = row[2]
+        with open(f'/images/{file_name}', 'rb') as f:
+            img = f.read()
+        update.message.reply_photo(
+            img, caption="Here is the image you want review.\n")
+    else:
+        update.message.reply_text(
+            f"I'm sorry, I can't find this record...")
+
+
+def image_del(update: Update, context: CallbackContext):
+    if len(context.args) < 1:
+        update.message.reply_text(
+            "To delete an image record, please enter the id of it.")
+        return
+
+    arg = context.args[0]
+    if not arg.isdigit():
+        update.message.reply_text(
+            "To delete an image record, please enter the id of it.")
+        return
+    id = int(arg)
+    sql = f'DELETE FROM images WHERE id={id};'
+
+    logging.info(f'\n{sql}')
+
+    db = mysql.connector.connect(**db_config)
+    cursor = db.cursor()
+    try:
+        cursor.execute(sql)
+        db.commit()
+        cursor.close()
+        db.close()
+        update.message.reply_text("Successfully delete an image record!")
+    except Exception as e:
+        logging.debug(e)
+        update.message.reply_text(
+            'Failed to delete an item, please try again!')
 
 
 if __name__ == "__main__":
