@@ -42,6 +42,7 @@ def main():
     dispatcher.add_handler(CommandHandler("menu_update", cook_update))
     dispatcher.add_handler(CommandHandler("image", image_reply))
     dispatcher.add_handler(CommandHandler("image_log", image_list))
+    dispatcher.add_handler(CommandHandler("image_clear", image_clear))
 
     # To start the bot:
     updater.start_polling()
@@ -51,8 +52,8 @@ def main():
 def help_command(update: Update, context: CallbackContext) -> None:
     """Send a message when the command /help is issued."""
 
-    help_message = "Hello, I'm a smart chatbot powered by ChatGPT, You can talk to me about anything.\n" +\
-        "I also prepare some interesting commands for you to learn how to cook:\n\n" +\
+    help_message = "Hello, I'm a smart chatbot powered by ChatGPT.\n" +\
+        "I have prepared some interesting commands for you:\n\n" +\
         "/cook: Enter the name of the dish you are interested in, I'll give you a video.\n\n" +\
         "/menu: list the menu.\n\n" +\
         "/menu_add: Enter the name and the video site of the dish to add new item to the menu.\n" +\
@@ -63,7 +64,8 @@ def help_command(update: Update, context: CallbackContext) -> None:
         "Example: /menu_update 鱼香肉丝 https://www.new-cook-video/example\n\n" +\
         "/image: Enter a prompt, I can generate a realistic image for you\n" +\
         "Example: /image a lovely cat\n\n" +\
-        "/image_log: list the history of generated images"
+        "/image_log: list the history of generated images.\n\n" +\
+        "/image_clear: clear all records!"
 
     update.message.reply_text(help_message)
 
@@ -94,8 +96,8 @@ def cook_list(update: Update, context: CallbackContext) -> None:
     db.close()
 
     result = 'Here is the menu:\n'
-    for row in rows:
-        result += f'{row[0]}. {row[1]}\n'
+    for i, row in enumerate(rows, start=1):
+        result += f'{i}. {row[1]}\n'
 
     update.message.reply_text(result)
 
@@ -237,8 +239,14 @@ def image_list(update: Update, context: CallbackContext):
     result = 'Here are the image records:\n'
     for i, name in enumerate(imgs, start=1):
         result += f'{name.decode("utf-8")}\n'
+        result += f'{redis1.get(name).decode("utf-8")}\n\n\n'
 
     update.message.reply_text(result)
+
+
+def image_clear(update: Update, context: CallbackContext):
+    redis1.flushdb()
+    update.message.reply_text("Successfully clear all records!")
 
 
 if __name__ == "__main__":
