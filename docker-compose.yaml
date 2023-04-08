@@ -1,17 +1,40 @@
-version: '3.0'
+version: '3.8'
 services:
   chatbot:
-    image: comp7940group.azurecr.io/chatbot:v2.3
+    image: comp7940group.azurecr.io/chatbot:v3.1
+    container_name: chatbot
+    restart: always
     volumes:
       - ./chatbot.py:/chatbot.py
     environment:
+      - ACCESS_TOKEN=6021929462:AAGu_0F6w5Zk2o0t0pcKknm8E0KECLBaOo8
+
+      - OPENAI_API_KEY=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
+
       - REDIS_HOST=redis
       - REDIS_PASSWORD=comp7940project
       - REDIS_PORT=6379
-      - OPENAI_API_KEY=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
+      
+      - DB_HOST=mysql
+      - DB_USER=root
+      - DB_PWD=comp7940project!
+      - DB_PORT=3306
+      - DATABASE=comp7940
     entrypoint: python chatbot.py
     depends_on:
+      - mysql
       - redis
+
   redis:
     image: comp7940group.azurecr.io/redis:v1
+    container_name: redis
     command: redis-server /usr/local/etc/redis/redis.conf
+
+  mysql:
+    image: mysql:latest
+    container_name: mysql
+    environment:
+      - MYSQL_DATABASE=comp7940
+      - MYSQL_ROOT_PASSWORD=comp7940project!
+    ports:
+      - "33066:3306"
