@@ -1,0 +1,6 @@
+telegram
+python-telegram-bot
+redis
+openai
+mysql-connector-python
+wrapt-timeout-decorator
