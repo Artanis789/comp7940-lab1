@@ -5,11 +5,11 @@ import openai
 import mysql.connector
 import os
 import logging
-from wrapt_timeout_decorator import *
 import time
 import redis
 import json
 import requests
+from wrapt_timeout_decorator import *
 
 db_config = {
     'host': os.environ['DB_HOST'],
@@ -33,6 +33,7 @@ def select_all(sql) -> list:
     db.close()
     return rows
 
+
 def select_one(sql):
     logging.info(sql)
     db = mysql.connector.connect(**db_config)
@@ -42,6 +43,7 @@ def select_one(sql):
     cursor.close()
     db.close()
     return row
+
 
 def execute_sql(sql) -> None:
     logging.info(sql)
@@ -107,9 +109,17 @@ async def end(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     redis1.delete("context")
     await update.message.reply_text("Good bye~~")
 
-
 @timeout(90)
-async def chat(msg) -> str:
+def make_request(messages) -> str:
+    response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=messages
+        )
+    result = response.choices[0].message.content
+    return result
+
+
+def chat_completion(msg) -> str:
     data = redis1.get('context')
     if data:
         context = json.loads(data)
@@ -117,26 +127,19 @@ async def chat(msg) -> str:
 
         context.append({"role": "user", "content": msg})
         logging.info(f'Using context, context:\n{context}')
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=context
-        )
-        context.append({"role": "assistant",
-                        "content": response.choices[0].message.content})
 
-        logging.info(f'context after response:\n{context}')
+        result = make_request(context)
+
+        context.append({"role": "assistant",
+                        "content": result})
+
         redis1.set('context', json.dumps(context))
 
-        result = response.choices[0].message.content
         result += '\n\n\nYou are chat me with a context, please remember to use /end command to stop the conversation.'
     else:
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "user", "content": msg},
-            ]
-        )
-        result = response.choices[0].message.content
+        logging.info("Not using context.")
+        messages = [{"role": "user", "content": msg}]
+        result = make_request(messages)
     return result
 
 
@@ -145,17 +148,16 @@ async def gpt_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg = update.message.text
         logging.info(msg)
         start = time.time()
-        result = await chat(msg)
+        result = chat_completion(msg)
         logging.info(f"Request cost {time.time() - start}seconds")
         await update.message.reply_text(result)
 
-    except Exception as e:
+    except BaseException as e:
         logging.info(e)
         await update.message.reply_text(
             f"Something wrong with chatbot, please retry!")
 
 
-@timeout(60)
 async def image(prompt) -> str:
     response = openai.Image.create(
         prompt=prompt,
@@ -266,7 +268,7 @@ async def image_del(update: Update, context: ContextTypes.DEFAULT_TYPE):
         execute_sql(sql)
         await update.message.reply_text("Successfully delete an image record!")
     except Exception as e:
-        logging.debug(e)
+        logging.info(e)
         await update.message.reply_text(
             'Failed to delete an item, please try again!')
 
@@ -275,23 +277,19 @@ def main():
     application = Application.builder().token(
         os.environ["ACCESS_TOKEN"]).concurrent_updates(True).build()
 
-
     logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                         level=logging.INFO)
 
     init_database()
 
-    gpt_handler = MessageHandler(filters.TEXT & (~filters.COMMAND), gpt_reply)
-
-    application.add_handler(gpt_handler)
-    # on different commands - answer in Telegram
-    application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("end", end))
-    application.add_handler(CommandHandler("image", image_reply))
-    application.add_handler(CommandHandler("image_log", image_list))
-    application.add_handler(CommandHandler("image_review", image_review))
-    application.add_handler(CommandHandler("image_del", image_del))
+    application.add_handler(CommandHandler("help", help_command, block=False))
+    application.add_handler(CommandHandler("start", start, block=False))
+    application.add_handler(CommandHandler("end", end, block=False))
+    application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), gpt_reply, block=False))
+    application.add_handler(CommandHandler("image", image_reply, block=False))
+    application.add_handler(CommandHandler("image_log", image_list, block=False))
+    application.add_handler(CommandHandler("image_review", image_review, block=False))
+    application.add_handler(CommandHandler("image_del", image_del, block=False))
 
     # To start the bot:
     application.run_polling()
