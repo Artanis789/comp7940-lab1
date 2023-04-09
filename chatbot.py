@@ -6,6 +6,7 @@ import mysql.connector
 import os
 import logging
 import time
+import uuid
 import redis
 import json
 import requests
@@ -74,7 +75,7 @@ def init_database():
     execute_sql("DROP TABLE IF EXISTS images;")
 
     execute_sql(
-        "CREATE TABLE images (id serial PRIMARY KEY, prompt VARCHAR(255), image VARCHAR(255));")
+        "CREATE TABLE images (id serial PRIMARY KEY, prompt TEXT, image VARCHAR(255));")
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -109,12 +110,13 @@ async def end(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     redis1.delete("context")
     await update.message.reply_text("Good bye~~")
 
+
 @timeout(90)
 def make_request(messages) -> str:
     response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=messages
-        )
+        model="gpt-3.5-turbo",
+        messages=messages
+    )
     result = response.choices[0].message.content
     return result
 
@@ -152,13 +154,21 @@ async def gpt_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logging.info(f"Request cost {time.time() - start}seconds")
         await update.message.reply_text(result)
 
-    except BaseException as e:
-        logging.info(e)
+    except openai.error.Timeout as e:
+        logging.info(str(e))
+        await update.message.reply_text(
+            f"Time out with chatbot, please retry!")
+    except Exception as e:
+        module = e.__class__.__module__
+        if module is None or module == str.__class__.__module__:
+            text = e.__class__.__name__
+        text = module + '.' + e.__class__.__name__
+        logging.info(str(text) + str(e))
         await update.message.reply_text(
             f"Something wrong with chatbot, please retry!")
 
-
-async def image(prompt) -> str:
+@timeout(25)
+def image(prompt) -> str:
     response = openai.Image.create(
         prompt=prompt,
         n=1,
@@ -176,7 +186,7 @@ async def download_img(url):
 
 
 async def save_image(prompt: str, img: bytes):
-    file_name = f"{prompt.replace(' ', '_')}.jpg"
+    file_name = f"{uuid.uuid4()}.jpg"
     with open(f'/images/{file_name}', 'wb') as f:
         f.write(img)
 
@@ -190,17 +200,25 @@ async def image_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     try:
         prompt = " ".join(context.args)
-        logging.info(prompt)
+        logging.info(f"/image:{prompt}")
         start = time.time()
-        image_url = await image(prompt)
+        image_url = image(prompt)
         logging.info(f"Request cost {time.time() - start}seconds")
         img = await download_img(image_url)
         await save_image(prompt, img)
         await update.message.reply_photo(
             img, caption="Here is the picture generating for you. I already save it in database, you can type /image_log to ckeck the history.\n")
 
-    except Exception as e:
+    except openai.error.Timeout as e:
         logging.info(str(e))
+        await update.message.reply_text(
+            f"Time out with chatbot, please retry!")
+    except Exception as e:
+        module = e.__class__.__module__
+        if module is None or module == str.__class__.__module__:
+            text = e.__class__.__name__
+        text = module + '.' + e.__class__.__name__
+        logging.info(str(text) + str(e))
         await update.message.reply_text(
             f"Something wrong with chatbot, please retry!")
 
@@ -285,11 +303,15 @@ def main():
     application.add_handler(CommandHandler("help", help_command, block=False))
     application.add_handler(CommandHandler("start", start, block=False))
     application.add_handler(CommandHandler("end", end, block=False))
-    application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), gpt_reply, block=False))
+    application.add_handler(MessageHandler(
+        filters.TEXT & (~filters.COMMAND), gpt_reply, block=False))
     application.add_handler(CommandHandler("image", image_reply, block=False))
-    application.add_handler(CommandHandler("image_log", image_list, block=False))
-    application.add_handler(CommandHandler("image_review", image_review, block=False))
-    application.add_handler(CommandHandler("image_del", image_del, block=False))
+    application.add_handler(CommandHandler(
+        "image_log", image_list, block=False))
+    application.add_handler(CommandHandler(
+        "image_review", image_review, block=False))
+    application.add_handler(CommandHandler(
+        "image_del", image_del, block=False))
 
     # To start the bot:
     application.run_polling()

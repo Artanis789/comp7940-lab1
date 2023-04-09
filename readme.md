@@ -18,7 +18,7 @@ docker-compose up -d
 
 ## How to check logs?
 ```bash
-docker logs -f [NAME OF YOUR CHATBOT CONTAINER]
+docker logs -f chatbot
 ```
 
 ## How to shut down the service?
