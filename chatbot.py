@@ -230,9 +230,10 @@ async def image_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
         imgs = select_all(sql)
 
         result = 'Here are the image records:\n'
-        for i, img in enumerate(imgs, start=1):
-            result += f'{i}. {img[1]}\n'
+        for img in imgs:
+            result += f'{img[0]}. {img[1]}\n'
         result += "\n\nYou can use /image_review command to check an image record."
+        result += "\nYou can use /image_del command to delete an image record."
         await update.message.reply_text(result)
     except Exception as e:
         logging.info(e)
