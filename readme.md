@@ -1,5 +1,5 @@
 # The link of the chatbot:
-- http://t.me/minghebot
+- http://t.me/cannot_find_bot
 # How to run the service locally?
 ## Prerequisites:
 ### 1. Docker on your computer or VM

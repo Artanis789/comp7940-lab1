@@ -1,0 +1,42 @@
+version: '3.8'
+services:
+  chatbot:
+    image: comp7940chatbot
+    build: .
+    container_name: chatbot
+    volumes:
+      - ./chatbot.py:/chatbot.py
+    environment:
+      - ACCESS_TOKEN=YOUR_TELEGRAM_BOT_TOKEN
+
+      - OPENAI_API_KEY=YOUR_OPENAI_API_KEY
+
+      - REDIS_HOST=redis
+      - REDIS_PASSWORD=comp7940project
+      - REDIS_PORT=6379
+      
+      - DB_HOST=mysql
+      - DB_USER=root
+      - DB_PWD=comp7940project
+      - DB_PORT=3306
+      - DATABASE=comp7940
+    entrypoint: python chatbot.py
+    depends_on:
+      - mysql
+      - redis
+
+  redis:
+    image: redis:latest
+    container_name: redis
+    volumes:
+      - ./redis.conf:/usr/local/etc/redis/redis.conf
+    command: redis-server /usr/local/etc/redis/redis.conf
+
+  mysql:
+    image: mysql:latest
+    container_name: mysql
+    environment:
+      - MYSQL_DATABASE=comp7940
+      - MYSQL_ROOT_PASSWORD=comp7940project
+    ports:
+      - "33066:3306"
