@@ -7,9 +7,9 @@ services:
     volumes:
       - ./chatbot.py:/chatbot.py
     environment:
-      - ACCESS_TOKEN=6003117995:AAEOAGk_ajoaZBbzkIVoKUZt5drXguqM_S8
+      - ACCESS_TOKEN=YOUR_TELEGRAM_BOT_TOKEN
 
-      - OPENAI_API_KEY=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
+      - OPENAI_API_KEY=YOUR_OPENAI_API_KEY
 
       - REDIS_HOST=redis
       - REDIS_PASSWORD=comp7940project
