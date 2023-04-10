@@ -9,7 +9,7 @@ services:
     environment:
       - ACCESS_TOKEN=6003117995:AAEOAGk_ajoaZBbzkIVoKUZt5drXguqM_S8
 
-      - OPENAI_API_KEY=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
+      - OPENAI_API_KEY=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
 
       - REDIS_HOST=redis
       - REDIS_PASSWORD=comp7940project
