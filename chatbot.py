@@ -1,6 +1,6 @@
 from telegram.ext import (Application, CommandHandler, MessageHandler,
-                          filters, ContextTypes)
-from telegram import Update
+                          filters, ContextTypes, ConversationHandler)
+from telegram import Update, error
 import openai
 import mysql.connector
 import os
@@ -98,16 +98,17 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     logging.info("start command")
-
+    id = update.message.from_user.id
     context_json = json.dumps(
         [{"role": "system", "content": "You are a helpful chatbot"}])
-    redis1.set("context", context_json)
+    redis1.set(id, context_json)
     await update.message.reply_text("Hello, what can I do for you?")
 
 
 async def end(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    id = update.message.from_user.id
     logging.info("end command")
-    redis1.delete("context")
+    redis1.delete(id)
     await update.message.reply_text("Good bye~~")
 
 
@@ -121,40 +122,44 @@ def make_request(messages) -> str:
     return result
 
 
-def chat_completion(msg) -> str:
-    data = redis1.get('context')
-    if data:
-        context = json.loads(data)
-        assert isinstance(context, list)
-
-        context.append({"role": "user", "content": msg})
-        logging.info(f'Using context, context:\n{context}')
-
-        result = make_request(context)
-
-        context.append({"role": "assistant",
-                        "content": result})
-
-        redis1.set('context', json.dumps(context))
-
-        result += '\n\n\nYou are chat me with a context, please remember to use /end command to stop the conversation.'
-    else:
-        logging.info("Not using context.")
+async def chat_completion(msg, id) -> str:
+    data = redis1.get(id)
+    if data is None:
+        logging.info(f"User id={id}, Not using context:\n{msg}")
         messages = [{"role": "user", "content": msg}]
         result = make_request(messages)
+        return result
+
+    context = json.loads(data)
+    assert isinstance(context, list)
+
+    context.append({"role": "user", "content": msg})
+    logging.info(f'User id={id}, Using context, context:\n{context}')
+
+    result = make_request(context)
+
+    context.append({"role": "assistant", "content": result})
+
+    redis1.set(id, json.dumps(context))
+
+    result += '\n\n\nYou are chat me with a context, please remember to use /end command to stop the conversation.'
+
     return result
+
+# id = update.message.from_user.id
 
 
 async def gpt_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
+        id = update.message.from_user.id
         msg = update.message.text
-        logging.info(msg)
+
         start = time.time()
-        result = chat_completion(msg)
+        result = await chat_completion(msg, id)
         logging.info(f"Request cost {time.time() - start}seconds")
         await update.message.reply_text(result)
 
-    except openai.error.Timeout as e:
+    except (openai.error.Timeout, error.TimeoutError, TimeoutError) as e:
         logging.info(str(e))
         await update.message.reply_text(
             f"Time out with chatbot, please retry!")
@@ -166,6 +171,7 @@ async def gpt_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logging.info(str(text) + str(e))
         await update.message.reply_text(
             f"Something wrong with chatbot, please retry!")
+
 
 @timeout(25)
 def image(prompt) -> str:
@@ -209,7 +215,7 @@ async def image_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_photo(
             img, caption="Here is the picture generating for you. I already save it in database, you can type /image_log to ckeck the history.\n")
 
-    except openai.error.Timeout as e:
+    except (openai.error.Timeout, error.TimeoutError, TimeoutError) as e:
         logging.info(str(e))
         await update.message.reply_text(
             f"Time out with chatbot, please retry!")
