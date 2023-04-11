@@ -1,6 +1,7 @@
 from telegram.ext import (Application, CommandHandler, MessageHandler,
                           filters, ContextTypes, ConversationHandler)
-from telegram import Update, error
+from telegram import Update
+from telegram.error import TimedOut
 import openai
 import mysql.connector
 import os
@@ -146,8 +147,6 @@ async def chat_completion(msg, id) -> str:
 
     return result
 
-# id = update.message.from_user.id
-
 
 async def gpt_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -159,7 +158,7 @@ async def gpt_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logging.info(f"Request cost {time.time() - start}seconds")
         await update.message.reply_text(result)
 
-    except (openai.error.Timeout, error.TimeoutError, TimeoutError) as e:
+    except (openai.error.Timeout, TimedOut, TimeoutError) as e:
         logging.info(str(e))
         await update.message.reply_text(
             f"Time out with chatbot, please retry!")
@@ -215,7 +214,7 @@ async def image_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_photo(
             img, caption="Here is the picture generating for you. I already save it in database, you can type /image_log to ckeck the history.\n")
 
-    except (openai.error.Timeout, error.TimeoutError, TimeoutError) as e:
+    except (openai.error.Timeout, TimedOut, TimeoutError) as e:
         logging.info(str(e))
         await update.message.reply_text(
             f"Time out with chatbot, please retry!")
